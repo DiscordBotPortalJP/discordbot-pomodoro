@@ -1,3 +1,4 @@
+import os
 import asyncio
 from datetime import datetime, timedelta
 from typing import Iterable, List, Optional, Dict, Tuple, Literal
@@ -26,7 +27,7 @@ JOIN_OVERVIEW = (
 
 JOIN_OVERVIEW_COOLDOWN_SEC = 300  # 入室説明の個人クールダウン 5分
 VACANCY_STATUS_DELAY_SEC = 5      # 無人化後に status を再設定する遅延
-BOT_STAY_IN_VC = True             # 常にVCに参加する対策を有効化
+BOT_STAY_IN_VC = os.getenv("POMODORO_STAY_IN_VC", "false").lower() in ("1","true","yes")
 
 # ----------------- 共通ヘルパ -----------------
 
@@ -141,11 +142,24 @@ class PomodoroCog(commands.Cog):
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._runner(), name="pomodoro-runner")
             print("Pomodoro scheduler started.")
-        # 現在窓でステータス即時設定
+
+        # 起動直後：現在窓でステータス即時設定（在室0でも）
         asyncio.create_task(self._set_initial_statuses())
-        # BOT を対象VCに常駐（許可があれば）
+
         if BOT_STAY_IN_VC:
+            # ★ 常駐を有効化している場合のみ、接続維持ループを起動
             asyncio.create_task(self._ensure_bot_stays_in_all_vcs())
+        else:
+            # ★ 常駐OFF時：もし既にどこかの VC に居るなら静かに切断
+            asyncio.create_task(self._disconnect_from_all_vcs())
+
+    async def _disconnect_from_all_vcs(self):
+        """常駐OFF時に既存接続を解消（再開時は _ensure_bot_stays_in_all_vcs を呼ぶだけでOK）。"""
+        for vc_client in list(self.bot.voice_clients):
+            try:
+                await vc_client.disconnect(force=True)
+            except Exception:
+                pass
 
     async def _set_initial_statuses(self):
         now = now_jst()
