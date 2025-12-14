@@ -112,14 +112,29 @@ class PomodoroCog(commands.Cog):
         # 新規ギルド用：権限整うまで再試行するタスク
         self._post_join_tasks: Dict[int, asyncio.Task] = {}
 
-    # ----- 汎用：ギルド単位で現在窓のステータスを設定 -----
-    async def _set_status_current_for_guild(self, guild: discord.Guild):
-        vc = first_manageable_vc(guild)
+    # ----- 内部ユーティリティ -----
+    def _target_vc(self, guild: discord.Guild) -> Optional[discord.VoiceChannel]:
+        return first_manageable_vc(guild)
+
+    async def _update_vc_status(self, guild: discord.Guild, status_text: str, vc: Optional[discord.VoiceChannel] = None):
+        vc = vc or self._target_vc(guild)
         if vc and can_edit_status(vc):
             try:
-                await vc.edit(status=make_status_text_from_now(now_jst()))
+                await vc.edit(status=status_text)
             except Exception:
                 pass
+
+    def _should_send_join_overview(self, guild_id: int, member_id: int, now: datetime) -> bool:
+        key = (guild_id, member_id)
+        last = self._join_last_sent.get(key)
+        if not last or (now - last).total_seconds() >= JOIN_OVERVIEW_COOLDOWN_SEC:
+            self._join_last_sent[key] = now
+            return True
+        return False
+
+    # ----- 汎用：ギルド単位で現在窓のステータスを設定 -----
+    async def _set_status_current_for_guild(self, guild: discord.Guild):
+        await self._update_vc_status(guild, make_status_text_from_now(now_jst()))
 
     # ----- 起動時 -----
     @commands.Cog.listener()
@@ -157,9 +172,9 @@ class PomodoroCog(commands.Cog):
         start = now_jst()
         try:
             while (now_jst() - start).total_seconds() < timeout_sec and not self.bot.is_closed():
-                vc = first_manageable_vc(guild)
+                vc = self._target_vc(guild)
                 if vc and can_edit_status(vc):
-                    await self._set_status_current_for_guild(guild)
+                    await self._update_vc_status(guild, make_status_text_from_now(now_jst()), vc)
                     return
                 await asyncio.sleep(5)  # 5秒おきに確認
         finally:
@@ -177,7 +192,7 @@ class PomodoroCog(commands.Cog):
             except: pass
 
     async def _ensure_bot_in_vc(self, guild: discord.Guild):
-        vc = first_manageable_vc(guild)
+        vc = self._target_vc(guild)
         if not vc: return
         vc_client: Optional[discord.VoiceClient] = discord.utils.get(self.bot.voice_clients, guild=guild)
         if vc_client and vc_client.is_connected():
@@ -195,17 +210,14 @@ class PomodoroCog(commands.Cog):
                                     before: discord.VoiceState, after: discord.VoiceState):
         if member.bot: return
         guild = member.guild
-        target_vc = first_manageable_vc(guild)
+        target_vc = self._target_vc(guild)
         if target_vc is None: return
 
         # 入室：個人向け概要（クールダウン付）& 無人化遅延タスクがあればキャンセル
         if after.channel and after.channel.id == target_vc.id and (not before.channel or before.channel.id != target_vc.id):
             if can_send_in(target_vc):
-                key = (guild.id, member.id)
-                last = self._join_last_sent.get(key)
                 now = now_jst()
-                if not last or (now - last).total_seconds() >= JOIN_OVERVIEW_COOLDOWN_SEC:
-                    self._join_last_sent[key] = now
+                if self._should_send_join_overview(guild.id, member.id, now):
                     try:    await target_vc.send(JOIN_OVERVIEW.format(mention=member.mention))
                     except: pass
             t = self._vacancy_tasks.pop(guild.id, None)
@@ -220,11 +232,10 @@ class PomodoroCog(commands.Cog):
     async def _vacancy_status_reset(self, guild: discord.Guild):
         try:
             await asyncio.sleep(VACANCY_STATUS_DELAY_SEC)
-            vc = first_manageable_vc(guild)
+            vc = self._target_vc(guild)
             if not vc: return
-            if not vc_humans(vc) and can_edit_status(vc):
-                try:    await vc.edit(status=make_status_text_from_now(now_jst()))
-                except: pass
+            if not vc_humans(vc):
+                await self._update_vc_status(guild, make_status_text_from_now(now_jst()), vc)
         finally:
             self._vacancy_tasks.pop(guild.id, None)
 
@@ -247,13 +258,11 @@ class PomodoroCog(commands.Cog):
                 print(f"[Pomodoro] guild {guild.id} error:", e)
 
     async def _process_guild(self, guild: discord.Guild, body_text: str, status_text: str):
-        vc = first_manageable_vc(guild)
+        vc = self._target_vc(guild)
         if vc is None: return
 
         # 在室0でもステータス更新
-        if can_edit_status(vc):
-            try:    await vc.edit(status=status_text)
-            except: pass
+        await self._update_vc_status(guild, status_text, vc)
 
         # 在室者がいるときのみメンション告知
         humans = vc_humans(vc)
