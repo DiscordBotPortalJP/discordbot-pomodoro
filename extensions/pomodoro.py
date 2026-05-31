@@ -6,6 +6,7 @@ from typing import Iterable, List, Optional, Dict, Tuple, Literal
 import discord
 from discord.ext import commands
 from zoneinfo import ZoneInfo
+from utils.ops_log import emit_exception_event
 
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -233,18 +234,37 @@ class PomodoroCog(commands.Cog):
         while not self.bot.is_closed():
             target = next_fire_from(now_jst())
             await asyncio.sleep(max(0.0, (target - now_jst()).total_seconds()))
-            try:    await self._fire_once(target)
-            except Exception as e:
-                print("[Pomodoro] fire error:", e)
+            try:
+                await self._fire_once(target)
+            except Exception as error:
+                await emit_exception_event(
+                    'notification_failed',
+                    'Pomodoro scheduler failed',
+                    error,
+                    safe_details={
+                        'targetAt': target.isoformat(),
+                    },
+                )
+                print("[Pomodoro] fire error:", error)
 
     async def _fire_once(self, target_jst: datetime):
         minute = target_jst.minute
         body_text  = ANNOUNCE[minute]
         status_txt = make_status_text(minute, target_jst)
         for guild in list(self.bot.guilds):
-            try:    await self._process_guild(guild, body_text, status_txt)
-            except Exception as e:
-                print(f"[Pomodoro] guild {guild.id} error:", e)
+            try:
+                await self._process_guild(guild, body_text, status_txt)
+            except Exception as error:
+                await emit_exception_event(
+                    'notification_failed',
+                    'Pomodoro guild processing failed',
+                    error,
+                    safe_details={
+                        'guildId': guild.id,
+                        'minute': minute,
+                    },
+                )
+                print(f"[Pomodoro] guild {guild.id} error:", error)
 
     async def _process_guild(self, guild: discord.Guild, body_text: str, status_text: str):
         vc = first_manageable_vc(guild)
