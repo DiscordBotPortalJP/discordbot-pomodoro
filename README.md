@@ -15,14 +15,14 @@ Bot が `Manage Channels` を持つ最初のボイスチャンネルを対象に
 
 ## 環境変数
 
-| Name | Required | Description |
+| 変数 | 必須 | 説明 |
 | --- | --- | --- |
-| `DISCORD_BOT_TOKEN` | Yes | Discord Bot token |
-| `POMODORO_STAY_IN_VC` | No | `true` の場合、対象VCにBotを常駐させます。Default: `false` |
-| `OPS_LOG_HUB_URL` | No | ops-log-hub ingest endpoint |
-| `OPS_LOG_HUB_KEY` | No | ops-log-hub ingest key |
-| `OPS_LOG_PROJECT` | No | ops-log project name. Default: `discordbot-pomodoro` |
-| `OPS_LOG_ENVIRONMENT` | No | `production` / `development` など |
+| `DISCORD_BOT_TOKEN` | はい | Discord Bot token |
+| `POMODORO_STAY_IN_VC` | いいえ | `true` の場合、対象VCにBotを常駐させます。既定値: `false` |
+| `OPS_LOG_HUB_URL` | いいえ | ops-log-hub 送信先 |
+| `OPS_LOG_HUB_KEY` | いいえ | ops-log-hub 送信用 key |
+| `OPS_LOG_PROJECT` | いいえ | ops-log project 名。既定値: `discordbot-pomodoro` |
+| `OPS_LOG_ENVIRONMENT` | いいえ | `production` / `development` など |
 
 ## 必要権限・Intents
 
@@ -34,18 +34,18 @@ Bot が `Manage Channels` を持つ最初のボイスチャンネルを対象に
 
 Message Content Intent は不要です。
 
-## Ops logging
+## 運用ログ
 
 `OPS_LOG_HUB_URL` と `OPS_LOG_HUB_KEY` が設定されている場合のみ、以下のイベントを ops-log-hub に送信します。
 
 - `startup`: Bot 起動完了
-- `config_error`: extension load の失敗
+- `config_error`: extension 読み込みの失敗
 - `command_error`: slash command / prefix command の失敗
 - `notification_failed`: ポモドーロ通知・VC処理の失敗
 
 ログには secret 値や不要な個人情報は含めず、guild/channel など調査に必要な最小限の情報だけを入れます。
 
-## Local run
+## ローカル実行
 
 ```bash
 cp .env.example .env
