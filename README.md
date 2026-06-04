@@ -39,7 +39,7 @@ Message Content Intent は不要です。
 `OPS_LOG_HUB_URL` と `OPS_LOG_HUB_KEY` が設定されている場合のみ、以下のイベントを ops-log-hub に送信します。
 
 - `startup`: Bot 起動完了
--- `config_error`: extension 読み込みの失敗
+- `config_error`: extension 読み込みの失敗
 - `command_error`: slash command / prefix command の失敗
 - `notification_failed`: ポモドーロ通知・VC処理の失敗
 
